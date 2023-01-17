@@ -1,5 +1,5 @@
 # MySpotify
-Visualizing my Spotify streaming data from 2022 - Janurary 2023
+Visualizing my Spotify streaming data from Jan 2022 - Jan 2023
 
 Made with data from Spotify: https://support.spotify.com/us/article/data-rights-and-privacy-settings/
 
