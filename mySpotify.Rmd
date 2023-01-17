@@ -1,0 +1,156 @@
+---
+title: "My Spotify Data - 2022"
+author: "Sam Freis"
+date: "2023-01-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list=ls())
+cat("\014") 
+
+library(jsonlite)
+library(lubridate)
+library(gghighlight)
+library(spotifyr)
+library(tidyverse)
+library(knitr)
+library(ggplot2)
+library(plotly)
+```
+
+## Analyzing and visualizing my own Spotify history from January 2022 - January 2023 
+
+#### Data Import ####
+```{r}
+# read in stream history
+stream <- fromJSON("StreamingHistory0.json", flatten = TRUE)
+
+```
+
+#### Brief Data Examination of Data Structure ####
+```{r, warning=FALSE}
+# look at var names and info
+names(stream)
+str(stream)
+head(stream)
+
+# add date and time
+spotify <- stream %>% 
+  as_tibble() %>% 
+  mutate_at("endTime", ymd_hm) %>% 
+  mutate(endTime = endTime - hours(6)) %>% 
+  mutate(date = floor_date(endTime, "day") %>% as_date, seconds = msPlayed / 1000, minutes = seconds / 60)
+```
+
+## Research Questions: 
+### 1. Which artists did I listen to most?
+```{r, warning=FALSE}
+p1 <- spotify %>% 
+  filter(date >= "2022-01-01") %>% 
+  group_by(artistName) %>% 
+  summarize(minutesListened = sum(minutes)) %>% 
+  filter(minutesListened >= 180) %>%
+  ggplot(aes(x = artistName, y = minutesListened)) + 
+  geom_col(aes(fill = minutesListened)) +
+  scale_fill_gradient(low = "grey", high = "darkblue") + 
+  labs(x= "Artist", y= "Minutes Listened") + 
+  ggtitle("Top Artists by Minutes Listened") +
+  theme_minimal()+
+  theme(legend.position = "bottom", axis.text.x = element_text(angle=60, size=7, hjust = 1))
+p1
+
+# activity by artist 
+p2 <- spotify %>% 
+  group_by(artistName, date = floor_date(date, "month")) %>% 
+  summarize(hours = sum(minutes) / 60) %>% 
+  ggplot(aes(x = date, y = hours, group = artistName)) + 
+  labs(x= "Date", y= "Hours of Listen Time") + 
+  ggtitle("Listening Activity by Artist Over Time") +
+  geom_line() + 
+  gghighlight(artistName == "St. Vincent" || artistName == "Hovvdy")+
+  theme_minimal()
+p2
+```
+
+My top artists in this time frame were both Texans, of course. I listened to Hovvdy and St. Vincent for 750+ minutes last year. My Hovvdy listening peaked right after they released a new album and right around when I saw them live. My St. Vincent listening was high at the start of 2022, around when I got to see her in concert, and then my listening took off again in late 2022. I tend to listen to music I know well when working on analyses and writing. So, St. Vincent's discography has been playing on repeat while I worked on projects with deadlines at the end of 2022. Also, shout out to the Quantitude Pod for making the 3+ hours of listening time cut. 
+
+### 2. Which songs did I listen to most?
+```{r, warning=FALSE}
+p3<-spotify %>% 
+  filter(date >= "2022-01-01") %>% 
+  group_by(trackName) %>% 
+  summarize(minutesListened = sum(minutes)) %>% 
+  filter(minutesListened >= 100) %>%
+  ggplot(aes(x = trackName, y = minutesListened)) + 
+  geom_col(aes(fill = minutesListened)) +
+  scale_fill_gradient(low = "grey", high = "darkorange3") + 
+  labs(x= "Track", y= "Minutes Listened") + 
+  ggtitle("Top Tracks by Minutes Listened") +
+  theme_minimal()+
+  theme(legend.position = "bottom", axis.text.x = element_text(angle=60, size=7, hjust = 1))
+p3
+```
+
+Songs I listened to for over 100 minutes in this time frame. My top songs were concussion by girlhouse and Speeding 72 by Momma. 
+
+### 3. Looking at time-related data
+```{r, warning=FALSE}
+# activity per week and hour
+p4 <- spotify %>% 
+  filter(date >= "2022-01-01") %>% 
+  group_by(date) %>% 
+  group_by(date = floor_date(date, "week")) %>%
+  summarize(hours = sum(minutes) / 60) %>% 
+  arrange(date) %>% 
+  ggplot(aes(x = date, y = hours)) + 
+  geom_col(aes(fill = hours)) +
+  scale_fill_gradient(low = "grey", high = "darkgreen") + 
+  labs(x= "Date", y= "Hours of Listen Time") + 
+  ggtitle("Listening Activity per Week")+
+  theme_minimal()
+p4
+
+# activity by time of day 
+day <- spotify %>% 
+  filter(date >= "2022-01-01") %>% 
+  group_by(date, hour = hour(endTime), weekday = wday(date, label = TRUE))%>% 
+  summarize(minutesListened = sum(minutes))
+
+p5<-day %>% 
+  ggplot(aes(x = hour, y = minutesListened, group = date)) + 
+  geom_col(fill = "darkgreen") +
+  labs(x= "Time of Day (24hr)", y= "Minutes of Listen Time")+
+  scale_x_continuous(breaks = seq(0, 24, by = 2))+
+  theme_minimal()
+p5
+
+# activity by day
+p6 <-day %>% 
+  group_by(weekday, hour) %>% 
+  summarize(minutes = sum(minutesListened)) %>% 
+  ggplot(aes(x = weekday, hour, fill = minutes)) + 
+  geom_tile() + 
+  scale_fill_gradient(low = "darkblue", high = "red") +
+  labs(x= "Weekday", y= "Time of Day (24hr)")+
+  scale_y_continuous(breaks = seq(0, 24, by = 2))+
+  theme_minimal()+
+  theme(legend.position = "bottom", axis.text.x = element_text(angle=60, size=7, hjust = 1))
+p6
+
+# activity weekdays v weekends
+p7 <- day %>% 
+  mutate(day_type = if_else(weekday %in% c("Sat", "Sun"), "weekend", "weekday")) %>% 
+  group_by(day_type, hour) %>% 
+  summarize(minutes = sum(minutesListened)) %>% 
+  ggplot(aes(x = day_type, y = minutes, color = day_type)) + 
+  geom_boxplot()+
+  labs(x= "Day Type", y= "Minutes of Listen Time") + 
+theme_minimal()+
+  theme(axis.text.x = element_text(size=10, hjust = 1))
+p7
+```
+
+I listened to a lot music in between April of 2022 and August of 2022. I drove to Texas from Colorado and back that summer, so these trends make sense. My listening time typically peaks on weekday mornings.  
